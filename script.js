@@ -313,20 +313,49 @@
       p.textContent = role === "admin" ? "No events yet." : "No events yet.";
       box.append(p); return;
     }
-    for (const e of list) {
+    list.forEach((e, i) => {
+      const item = document.createElement("div"); item.className = "item";
       const b = document.createElement("button"); b.type = "button"; b.className = "row" + (e.id === selectedId ? " active" : "");
       const a = document.createElement("span"); a.className = "age"; a.textContent = fmtAge(e.age);
       const t = document.createElement("span"); t.className = "t"; t.textContent = e.title;
       const v = document.createElement("span"); v.className = "v " + emoClass(e.emotion); v.textContent = fmtEmo(e.emotion);
       b.append(a, t, v);
       b.addEventListener("click", () => select(e.id));
-      box.append(b);
+      item.append(b);
+      // Several events at the same age: the admin can set their order with ↑ / ↓.
+      const prevSame = list[i - 1] && list[i - 1].age === e.age, nextSame = list[i + 1] && list[i + 1].age === e.age;
+      if (role === "admin" && (prevSame || nextSame)) {
+        const m = document.createElement("div"); m.className = "move";
+        for (const [dir, sym, label, ok] of [[-1, "▲", "Move earlier", prevSame], [1, "▼", "Move later", nextSame]]) {
+          const mb = document.createElement("button"); mb.type = "button"; mb.textContent = sym;
+          mb.title = label; mb.setAttribute("aria-label", `${label}: ${e.title}`); mb.dataset.move = e.id + ":" + dir;
+          mb.disabled = !ok;
+          mb.addEventListener("click", () => move(e.id, dir));
+          m.append(mb);
+        }
+        item.append(m);
+      }
+      box.append(item);
       // Viewers have no edit form, so show the note right under the chosen event in the list too.
       if (role !== "admin" && e.id === selectedId && e.note) {
         const n = document.createElement("p"); n.className = "row-note"; n.textContent = e.note;
         box.append(n);
       }
-    }
+    });
+  }
+
+  // Swap an event with its neighbour of the same age. The sort is stable, so the
+  // order of the events array is the order shown in the list and on the chart.
+  function move(id, dir) {
+    const list = sorted(), i = list.findIndex((x) => x.id === id);
+    const a = list[i], b = list[i + dir];
+    if (!a || !b || a.age !== b.age) return;
+    const ia = events.indexOf(a), ib = events.indexOf(b);
+    events[ia] = b; events[ib] = a;
+    setDirty(true); render();
+    const again = $("rows").querySelector(`[data-move="${id}:${dir}"]`);
+    if (again && !again.disabled) again.focus();
+    else { const other = $("rows").querySelector(`[data-move="${id}:${-dir}"]`); if (other) other.focus(); }
   }
 
   function render() { drawChart(); drawList(); }
@@ -368,7 +397,10 @@
     if (!title) { showErr($("formErr"), "Write the event."); return; }
     const data = { age, title: title.slice(0, 80), emotion: +$("fEmo").value, note: $("fNote").value };
     if (editingId) {
-      Object.assign(events.find((x) => x.id === editingId), data);
+      const cur = events.find((x) => x.id === editingId);
+      // Moved to a different age: put it last among that age's events, like a newly added one.
+      if (cur.age !== age) { events = events.filter((x) => x !== cur); events.push(cur); }
+      Object.assign(cur, data);
       const keep = editingId;
       resetForm(); selectedId = keep; loadForm(keep);
     } else {
