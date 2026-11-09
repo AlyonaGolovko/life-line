@@ -1,0 +1,22 @@
+{
+ "format": "life-line-v1",
+ "kdf": {
+  "name": "PBKDF2",
+  "hash": "SHA-256",
+  "iterations": 310000
+ },
+ "users": {
+  "admin": {
+   "salt": "sbEZYdgxUsJdYY5B6E5leg==",
+   "iv": "hkMESNpEf+5I3ZUg",
+   "key": "PBY/OtNbQILAP3rlgSfKCoYXtkFh1pKd43Np/NcEnSLnTXjCoopP4wgEi9yFpsBB"
+  },
+  "viewer": {
+   "salt": "+MQvfniwssSX9i0x1bD+CQ==",
+   "iv": "v2/MoHf5gkzbjRFL",
+   "key": "hzSW6pC9dRZDtk5ei0Hcvu++VVxDpNOgbDFZLxRCW8oPEcrlxX7SLcQ5nEx5ZEIk"
+  }
+ },
+ "iv": "FS8EPCEDhO2rGkjG",
+ "data": "+Ig79I5wCZJchTjwZzQpd/1V0JSlz9Epm4fv0fy/M67uVDB3ICjRKRdcqgyVm7bB2dqXQBGXyu7Pa1HCjY72hbUn3qQ="
+}

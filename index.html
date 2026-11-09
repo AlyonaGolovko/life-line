@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://api.github.com; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<title>My Life Line</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600&family=Figtree:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ========== LOGIN ========== -->
+<main class="login" id="loginView">
+  <form id="loginForm" novalidate>
+    <label for="name">Name<input id="name" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="viewer or admin"></label>
+    <label for="pass">Password<input id="pass" type="password" autocomplete="current-password"></label>
+    <label for="dataFile" id="filePick" hidden>Data file<input id="dataFile" type="file" accept=".json,application/json"></label>
+    <button class="btn primary" type="submit" id="openBtn">Open</button>
+    <p class="err" id="loginErr" hidden></p>
+    <button class="linkbtn" type="button" id="toSetup" hidden>Create a new data file</button>
+  </form>
+
+  <form id="setupForm" novalidate hidden>
+    <label for="setAdmin">Admin password<input id="setAdmin" type="password" autocomplete="new-password"></label>
+    <label for="setViewer">Viewer password<input id="setViewer" type="password" autocomplete="new-password"></label>
+    <button class="btn primary" type="submit">Create</button>
+    <p class="err" id="setupErr" hidden></p>
+  </form>
+</main>
+
+<!-- ========== APP ========== -->
+<div class="app" id="appView" hidden>
+  <div class="wrap">
+    <header>
+      <h1>My Life Line</h1>
+      <div class="tools">
+        <span class="status admin-only toggle" id="syncStatus" role="status" hidden></span>
+        <button class="btn admin-only" type="button" id="saveBtn">Save file</button>
+        <button class="btn admin-only" type="button" id="ghBtn">GitHub</button>
+        <button class="btn admin-only" type="button" id="importBtn">Import</button>
+        <input type="file" id="importFile" accept=".json,application/json" hidden>
+        <button class="btn admin-only" type="button" id="pwBtn">Passwords</button>
+        <button class="btn" type="button" id="logoutBtn">Log out</button>
+      </div>
+    </header>
+
+    <div class="notice" id="notice" hidden></div>
+
+    <form class="panel admin-only toggle" id="ghForm" hidden novalidate>
+      <h2>GitHub autosave</h2>
+      <div class="grid" style="gap:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+        <label for="ghOwner">Account<input id="ghOwner" type="text" autocapitalize="off" spellcheck="false"></label>
+        <label for="ghRepo">Repository<input id="ghRepo" type="text" autocapitalize="off" spellcheck="false"></label>
+        <label for="ghBranch">Branch<input id="ghBranch" type="text" value="main" autocapitalize="off" spellcheck="false"></label>
+      </div>
+      <label for="ghToken">Token<input id="ghToken" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…"></label>
+      <p class="hint">Stored only in this browser, locked with your admin password.</p>
+      <p class="err" id="ghErr" hidden></p>
+      <div class="actions">
+        <button class="btn primary" type="submit" id="ghConnect">Connect</button>
+        <button class="btn danger" type="button" id="ghForget" hidden>Disconnect this browser</button>
+        <button class="btn" type="button" id="ghCancel">Cancel</button>
+      </div>
+    </form>
+
+    <form class="panel admin-only toggle" id="pwForm" hidden novalidate>
+      <h2>Passwords</h2>
+      <div class="grid" style="gap:12px">
+        <label for="pwAdmin">New admin password<input id="pwAdmin" type="password" autocomplete="new-password" placeholder="leave empty to keep"></label>
+        <label for="pwViewer">New viewer password<input id="pwViewer" type="password" autocomplete="new-password" placeholder="leave empty to keep"></label>
+      </div>
+      <p class="err" id="pwErr" hidden></p>
+      <div class="actions"><button class="btn primary" type="submit">Change</button><button class="btn" type="button" id="pwCancel">Cancel</button></div>
+    </form>
+
+    <section class="chart-box" aria-label="Life line chart">
+      <div class="chart-inner" id="chartInner">
+        <svg id="chart" viewBox="0 0 1000 320" role="img" aria-label="Emotions across life, by age"></svg>
+        <div class="pop" id="pop" hidden>
+          <div class="pop-head">
+            <span class="pop-title" id="popTitle"></span>
+            <span class="pop-meta" id="popMeta"></span>
+            <button class="pop-close" type="button" id="popClose" aria-label="Close">×</button>
+          </div>
+          <textarea id="popNote" class="admin-only" aria-label="Notes" placeholder="Notes…"></textarea>
+          <p class="pop-note viewer-only" id="popNoteText"></p>
+        </div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <form class="panel admin-only" id="form" novalidate>
+        <h2 id="formTitle">Add life event</h2>
+        <div class="two">
+          <label for="fAge">Age<input id="fAge" type="number" min="0" max="120" step="0.5" inputmode="decimal"></label>
+          <label for="fTitle">Event<input id="fTitle" type="text" maxlength="80"></label>
+        </div>
+        <label for="fEmo">
+          <span class="emo-head">Emotion<span id="fEmoVal" class="zero">0</span></span>
+          <input id="fEmo" type="range" min="-5" max="5" step="1" value="0">
+          <span class="scale"><span>−5</span><span>0</span><span>+5</span></span>
+        </label>
+        <label for="fNote">Notes<textarea id="fNote" placeholder="Notes…"></textarea></label>
+        <p class="err" id="formErr" hidden></p>
+        <div class="actions">
+          <button class="btn primary" type="submit" id="fSave">Add</button>
+          <button class="btn danger" type="button" id="fDelete" hidden>Delete</button>
+          <button class="btn" type="button" id="fCancel" hidden>Cancel</button>
+        </div>
+      </form>
+
+      <section>
+        <div class="list-head">
+          <h2>Life events</h2>
+          <button class="btn soft admin-only" type="button" id="addBtn">+ Add</button>
+        </div>
+        <div class="rows" id="rows"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
