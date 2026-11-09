@@ -55,7 +55,10 @@ h2 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 20px; 
 
 .chart-box { border: 1px solid var(--line); border-radius: 14px; padding: 16px 12px 8px; }
 .chart-inner { position: relative; }
-svg#chart { display: block; width: 100%; height: auto; font-family: var(--body); overflow: visible; }
+svg#chart { display: block; width: 100%; height: auto; font-family: var(--body); overflow: visible; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.chart-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-height: 36px; margin: -4px 4px 8px; }
+.chart-bar .btn { min-height: 36px; padding: 6px 12px; }
+.chart-hint { font-size: 13px; color: var(--muted); }
 .pt { cursor: pointer; }
 .pop {
   position: absolute; width: 280px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px;

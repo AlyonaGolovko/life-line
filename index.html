@@ -79,6 +79,10 @@
     </form>
 
     <section class="chart-box" aria-label="Life line chart">
+      <div class="chart-bar">
+        <button class="btn soft" type="button" id="zoomOut" hidden>← Whole life</button>
+        <span class="chart-hint" id="zoomInfo" aria-live="polite"></span>
+      </div>
       <div class="chart-inner" id="chartInner">
         <svg id="chart" viewBox="0 0 1000 420" role="img" aria-label="Emotions across life, by age"></svg>
         <div class="pop" id="pop" hidden>
