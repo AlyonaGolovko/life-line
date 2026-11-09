@@ -160,7 +160,8 @@
     }));
   }
   const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
-  const sorted = () => [...events].sort((a, b) => a.age - b.age || a.title.localeCompare(b.title));
+  // By age; events from the same age keep the order they were added in.
+  const sorted = () => [...events].sort((a, b) => a.age - b.age);
   const fmtAge = (a) => String(Math.round(a * 10) / 10);
   const fmtEmo = (v) => v > 0 ? "+" + v : v < 0 ? "−" + Math.abs(v) : "0";
   const emoClass = (v) => v > 0 ? "good" : v < 0 ? "bad" : "zero";
@@ -197,14 +198,26 @@
     return n;
   };
   let xOf = (a) => a;
+  let ptX = new Map();      // event id -> x on the chart (same-age events sit side by side)
+  const SPREAD = 22;
 
   function drawChart() {
     const svg = $("chart"); svg.replaceChildren();
     const list = sorted();
-    let maxAge = Math.max(10, ...list.map((e) => e.age)) + 2;
-    const step = maxAge > 50 ? 10 : 5;
-    maxAge = Math.ceil(maxAge / step) * step;
+    // The axis ends exactly at the oldest event's age (0–10 when there are no events yet).
+    const maxAge = list.length ? Math.max(1, ...list.map((e) => e.age)) : 10;
+    const step = maxAge > 50 ? 10 : maxAge > 12 ? 5 : maxAge > 4 ? 2 : 1;
     xOf = (a) => L + (a / maxAge) * (W - L - R);
+
+    const groups = new Map();
+    for (const e of list) { if (!groups.has(e.age)) groups.set(e.age, []); groups.get(e.age).push(e); }
+    ptX = new Map();
+    for (const [age, g] of groups) {
+      const half = (g.length - 1) / 2 * SPREAD;
+      const mid = Math.min(Math.max(xOf(age), L + half), W - R - half);
+      g.forEach((e, i) => ptX.set(e.id, mid - half + i * SPREAD));
+    }
+    const px = (e) => ptX.get(e.id);
 
     const defs = el("defs");
     const cu = el("clipPath", { id: "clipUp" }); cu.append(el("rect", { x: 0, y: 0, width: W, height: yMid }));
@@ -214,7 +227,7 @@
     for (const v of [5, -5]) svg.append(el("line", { x1: L, x2: W - R, y1: yOf(v), y2: yOf(v), stroke: "var(--grid)" }));
 
     if (list.length) {
-      const pts = list.map((e) => [xOf(e.age), yOf(e.emotion)]);
+      const pts = list.map((e) => [px(e), yOf(e.emotion)]);
       const d = `M${pts[0][0]},${yMid} ` + pts.map((p) => `L${p[0]},${p[1]}`).join(" ") + ` L${pts[pts.length - 1][0]},${yMid} Z`;
       svg.append(el("path", { d, fill: "var(--good-soft)", "clip-path": "url(#clipUp)" }));
       svg.append(el("path", { d, fill: "var(--bad-soft)", "clip-path": "url(#clipDown)" }));
@@ -223,23 +236,26 @@
     [[5, "+5"], [0, "0"], [-5, "−5"]].forEach(([v, t]) => svg.append(el("text", { x: L - 10, y: yOf(v) + 4, "text-anchor": "end", "font-size": 12, fill: "var(--muted)" }, t)));
 
     if (list.length) {
-      svg.append(el("polyline", { points: list.map((e) => `${xOf(e.age)},${yOf(e.emotion)}`).join(" "), fill: "none", stroke: "var(--accent)", "stroke-width": 2.5, "stroke-linejoin": "round" }));
+      svg.append(el("polyline", { points: list.map((e) => `${px(e)},${yOf(e.emotion)}`).join(" "), fill: "none", stroke: "var(--accent)", "stroke-width": 2.5, "stroke-linejoin": "round" }));
     }
 
     // x axis
     const yAx = H - B + 8;
     svg.append(el("line", { x1: L, x2: W - R, y1: yAx, y2: yAx, stroke: "var(--axis)" }));
-    for (let a = 0; a <= maxAge; a += step) {
+    // Regular ticks, then the last age itself; skip a regular tick that would crowd it.
+    for (let a = 0; a < maxAge - step * 0.3; a += step) {
       svg.append(el("text", { x: xOf(a), y: yAx + 20, "text-anchor": "middle", "font-size": 12, fill: "var(--muted)" }, String(a)));
     }
+    svg.append(el("text", { x: xOf(maxAge), y: yAx + 20, "text-anchor": "middle", "font-size": 12, fill: "var(--muted)" }, fmtAge(maxAge)));
     svg.append(el("text", { x: W - R, y: H - 2, "text-anchor": "end", "font-size": 12, fill: "var(--muted)" }, "Age"));
 
     // points + labels (labels avoid each other)
     const placed = [];
     for (const e of list) {
-      const cx = xOf(e.age), cy = yOf(e.emotion), sel = e.id === selectedId;
+      const cx = px(e), cy = yOf(e.emotion), sel = e.id === selectedId;
+      const crowded = groups.get(e.age).length > 1;
       const g = el("g", { class: "pt", tabindex: 0, role: "button", "aria-label": `Age ${fmtAge(e.age)}: ${e.title}, emotion ${fmtEmo(e.emotion)}` });
-      g.append(el("circle", { cx, cy, r: 16, fill: "transparent" }));
+      g.append(el("circle", { cx, cy, r: crowded ? SPREAD / 2 : 16, fill: "transparent" }));
       g.append(el("circle", { cx, cy, r: sel ? 9 : 6, fill: sel ? "var(--accent)" : "#fff", stroke: sel ? "#fff" : "var(--accent)", "stroke-width": sel ? 3 : 2.5 }));
       if (!sel) {
         const label = trunc(e.title, 24), w = label.length * 7 + 8;
@@ -273,7 +289,7 @@
     if (role === "admin") { if (document.activeElement !== $("popNote")) $("popNote").value = e.note; }
     else { $("popNoteText").textContent = e.note || ""; $("popNoteText").hidden = !e.note; }
     // position near the point (desktop); CSS makes it static on phones
-    const cx = xOf(e.age), cy = yOf(e.emotion);
+    const cx = ptX.get(e.id) ?? xOf(e.age), cy = yOf(e.emotion);
     const leftPct = cx / W * 100, topPct = Math.min(Math.max(cy / H * 100 - 12, 0), 55);
     pop.style.top = topPct + "%";
     if (cx > W * 0.55) { pop.style.left = ""; pop.style.right = `calc(${100 - leftPct}% + 18px)`; }
@@ -305,6 +321,11 @@
       b.append(a, t, v);
       b.addEventListener("click", () => select(e.id));
       box.append(b);
+      // Viewers have no edit form, so show the note right under the chosen event in the list too.
+      if (role !== "admin" && e.id === selectedId && e.note) {
+        const n = document.createElement("p"); n.className = "row-note"; n.textContent = e.note;
+        box.append(n);
+      }
     }
   }
 
@@ -346,11 +367,17 @@
     if (!Number.isFinite(age) || age < 0 || age > 120) { showErr($("formErr"), "Enter an age between 0 and 120."); return; }
     if (!title) { showErr($("formErr"), "Write the event."); return; }
     const data = { age, title: title.slice(0, 80), emotion: +$("fEmo").value, note: $("fNote").value };
-    if (editingId) Object.assign(events.find((x) => x.id === editingId), data);
-    else { const e = { id: newId(), ...data }; events.push(e); selectedId = e.id; }
+    if (editingId) {
+      Object.assign(events.find((x) => x.id === editingId), data);
+      const keep = editingId;
+      resetForm(); selectedId = keep; loadForm(keep);
+    } else {
+      // A new event: highlight it, but leave the form ready for the next one,
+      // keeping the age so several events from the same year are quick to add.
+      const e = { id: newId(), ...data }; events.push(e); selectedId = e.id;
+      resetForm(); $("fAge").value = age; $("fTitle").focus();
+    }
     setDirty(true);
-    const keep = editingId || selectedId;
-    resetForm(); selectedId = keep; if (keep) loadForm(keep);
     render();
   });
 
