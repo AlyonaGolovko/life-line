@@ -199,7 +199,58 @@
   };
   let xOf = (a) => a;
   let ptX = new Map();      // event id -> x on the chart (same-age events sit side by side)
-  const SPREAD = 22;
+  const SPREAD = 22;        // the least room every event gets, so points and labels never overlap
+
+  // Busy periods make room for themselves. The age axis is cut at every age that has
+  // events; each piece gets at least enough width for the events at its two ends
+  // (SPREAD apart), and the quiet pieces share the rest in proportion to their years.
+  // Returns the age -> x function, the spacing to use between events, and the widened stretches.
+  function layoutAxis(groups, maxAge) {
+    const cnt = (a) => (groups.get(a) || []).length;
+    const knots = [0, ...[...groups.keys()].filter((a) => a > 0 && a < maxAge), maxAge];
+    const n = knots.length - 1, avail = W - L - R;
+    // Room each piece needs per unit of spacing; events at the very start or end can't
+    // spill past the axis, so their room is reserved at the edges.
+    const unit = [];
+    for (let i = 0; i < n; i++) unit.push((cnt(knots[i]) + cnt(knots[i + 1])) / 2);
+    const edgeL = Math.max(0, cnt(0) - 1) / 2, edgeR = Math.max(0, cnt(maxAge) - 1) / 2;
+    const units = unit.reduce((s, v) => s + v, 0) + edgeL + edgeR;
+    // More events than the chart can fit: everything moves closer together evenly.
+    const spread = units * SPREAD > avail ? avail / units : SPREAD;
+    const padL = edgeL * spread, padR = edgeR * spread;
+    const P = avail - padL - padR;
+    const nat = knots.slice(1).map((k, i) => (k - knots[i]) / maxAge * P);
+    const req = unit.map((u) => u * spread);
+    let w;
+    if (spread < SPREAD) {
+      w = req;
+    } else {
+      const fixed = new Array(n).fill(false);
+      for (;;) {
+        let free = P, natFree = 0;
+        for (let i = 0; i < n; i++) { if (fixed[i]) free -= req[i]; else natFree += nat[i]; }
+        const k = natFree > 0 ? free / natFree : 0;
+        let changed = false;
+        for (let i = 0; i < n; i++) if (!fixed[i] && nat[i] * k < req[i]) { fixed[i] = true; changed = true; }
+        if (!changed) { w = nat.map((v, i) => fixed[i] ? req[i] : v * k); break; }
+      }
+    }
+    const xs = [L + padL];
+    for (let i = 0; i < n; i++) xs.push(xs[i] + w[i]);
+    const x = (a) => {
+      if (a <= knots[0]) return xs[0];
+      for (let i = 0; i < n; i++) if (a <= knots[i + 1]) return xs[i] + (a - knots[i]) / (knots[i + 1] - knots[i]) * w[i];
+      return xs[n];
+    };
+    // Pieces clearly wider than their share of years, merged into continuous bands.
+    const bands = [];
+    for (let i = 0; i < n; i++) {
+      if (!(w[i] > nat[i] * 1.5 + 4)) continue;
+      const last = bands[bands.length - 1];
+      if (last && last.x2 === xs[i]) last.x2 = xs[i + 1]; else bands.push({ x1: xs[i], x2: xs[i + 1] });
+    }
+    return { x, spread, bands };
+  }
 
   function drawChart() {
     const svg = $("chart"); svg.replaceChildren();
@@ -207,15 +258,16 @@
     // The axis ends exactly at the oldest event's age (0–10 when there are no events yet).
     const maxAge = list.length ? Math.max(1, ...list.map((e) => e.age)) : 10;
     const step = maxAge > 50 ? 10 : maxAge > 12 ? 5 : maxAge > 4 ? 2 : 1;
-    xOf = (a) => L + (a / maxAge) * (W - L - R);
 
     const groups = new Map();
     for (const e of list) { if (!groups.has(e.age)) groups.set(e.age, []); groups.get(e.age).push(e); }
+    const axis = layoutAxis(groups, maxAge);
+    xOf = axis.x;
     ptX = new Map();
     for (const [age, g] of groups) {
-      const half = (g.length - 1) / 2 * SPREAD;
+      const half = (g.length - 1) / 2 * axis.spread;
       const mid = Math.min(Math.max(xOf(age), L + half), W - R - half);
-      g.forEach((e, i) => ptX.set(e.id, mid - half + i * SPREAD));
+      g.forEach((e, i) => ptX.set(e.id, mid - half + i * axis.spread));
     }
     const px = (e) => ptX.get(e.id);
 
@@ -223,6 +275,14 @@
     const cu = el("clipPath", { id: "clipUp" }); cu.append(el("rect", { x: 0, y: 0, width: W, height: yMid }));
     const cd = el("clipPath", { id: "clipDown" }); cd.append(el("rect", { x: 0, y: yMid, width: W, height: H }));
     defs.append(cu, cd); svg.append(defs);
+
+    // A soft tint behind widened periods, so it's clear their years are drawn wider than the rest.
+    const yAx = H - B + 8;
+    for (const b of axis.bands) {
+      const r = el("rect", { x: b.x1, y: T - 10, width: b.x2 - b.x1, height: yAx - T + 10, fill: "var(--accent-soft)", opacity: 0.55, rx: 6 });
+      r.append(el("title", {}, "Widened to fit its many events"));
+      svg.append(r);
+    }
 
     for (const v of [5, -5]) svg.append(el("line", { x1: L, x2: W - R, y1: yOf(v), y2: yOf(v), stroke: "var(--grid)" }));
 
@@ -239,14 +299,19 @@
       svg.append(el("polyline", { points: list.map((e) => `${px(e)},${yOf(e.emotion)}`).join(" "), fill: "none", stroke: "var(--accent)", "stroke-width": 2.5, "stroke-linejoin": "round" }));
     }
 
-    // x axis
-    const yAx = H - B + 8;
+    // x axis. The axis isn't evenly spaced any more, so each age label gets a small tick mark;
+    // the last age always shows, and a regular age is skipped where it would crowd another.
     svg.append(el("line", { x1: L, x2: W - R, y1: yAx, y2: yAx, stroke: "var(--axis)" }));
-    // Regular ticks, then the last age itself; skip a regular tick that would crowd it.
-    for (let a = 0; a < maxAge - step * 0.3; a += step) {
-      svg.append(el("text", { x: xOf(a), y: yAx + 20, "text-anchor": "middle", "font-size": 12, fill: "var(--muted)" }, String(a)));
-    }
-    svg.append(el("text", { x: xOf(maxAge), y: yAx + 20, "text-anchor": "middle", "font-size": 12, fill: "var(--muted)" }, fmtAge(maxAge)));
+    const tickXs = [];
+    const tick = (a, text) => {
+      const x = xOf(a);
+      if (tickXs.some((t) => Math.abs(t - x) < 28)) return;
+      tickXs.push(x);
+      svg.append(el("line", { x1: x, x2: x, y1: yAx, y2: yAx + 5, stroke: "var(--axis)" }));
+      svg.append(el("text", { x, y: yAx + 20, "text-anchor": "middle", "font-size": 12, fill: "var(--muted)" }, text));
+    };
+    tick(maxAge, fmtAge(maxAge));
+    for (let a = 0; a < maxAge; a += step) tick(a, String(a));
     svg.append(el("text", { x: W - R, y: H - 2, "text-anchor": "end", "font-size": 12, fill: "var(--muted)" }, "Age"));
 
     // points + vertical labels, so events close together don't cover each other's names.
@@ -257,7 +322,7 @@
       const cx = px(e), cy = yOf(e.emotion), sel = e.id === selectedId;
       const crowded = groups.get(e.age).length > 1;
       const g = el("g", { class: "pt", tabindex: 0, role: "button", "aria-label": `Age ${fmtAge(e.age)}: ${e.title}, emotion ${fmtEmo(e.emotion)}` });
-      g.append(el("circle", { cx, cy, r: crowded ? SPREAD / 2 : 16, fill: "transparent" }));
+      g.append(el("circle", { cx, cy, r: crowded ? Math.min(16, axis.spread / 2) : 16, fill: "transparent" }));
       g.append(el("circle", { cx, cy, r: sel ? 9 : 6, fill: sel ? "var(--accent)" : "#fff", stroke: sel ? "#fff" : "var(--accent)", "stroke-width": sel ? 3 : 2.5 }));
       const full = e.title.length * CH;
       const room = { up: cy - GAP - yTop, down: yBottom - (cy + GAP) };
