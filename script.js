@@ -184,7 +184,7 @@
   }
 
   // ---------------- chart ----------------
-  const W = 1000, H = 320, L = 50, R = 24, T = 30, B = 50;
+  const W = 1000, H = 420, L = 50, R = 24, T = 30, B = 50;
   const yMid = T + (H - T - B) / 2;
   const yOf = (v) => yMid - v * ((H - T - B) / 2) / 5;
   const el = (tag, attrs = {}, text) => {
@@ -249,30 +249,35 @@
     svg.append(el("text", { x: xOf(maxAge), y: yAx + 20, "text-anchor": "middle", "font-size": 12, fill: "var(--muted)" }, fmtAge(maxAge)));
     svg.append(el("text", { x: W - R, y: H - 2, "text-anchor": "end", "font-size": 12, fill: "var(--muted)" }, "Age"));
 
-    // points + labels (labels avoid each other)
-    const placed = [];
-    for (const e of list) {
+    // points + vertical labels, so events close together don't cover each other's names.
+    // A label runs up from its point (or down, when there's more room below) and is
+    // shortened to fit; it switches side if it would overlap a label right next to it.
+    const placed = [], GAP = 14, CH = 7.2, yTop = 4, yBottom = yAx - 4;
+    list.forEach((e) => {
       const cx = px(e), cy = yOf(e.emotion), sel = e.id === selectedId;
       const crowded = groups.get(e.age).length > 1;
       const g = el("g", { class: "pt", tabindex: 0, role: "button", "aria-label": `Age ${fmtAge(e.age)}: ${e.title}, emotion ${fmtEmo(e.emotion)}` });
       g.append(el("circle", { cx, cy, r: crowded ? SPREAD / 2 : 16, fill: "transparent" }));
       g.append(el("circle", { cx, cy, r: sel ? 9 : 6, fill: sel ? "var(--accent)" : "#fff", stroke: sel ? "#fff" : "var(--accent)", "stroke-width": sel ? 3 : 2.5 }));
-      if (!sel) {
-        const label = trunc(e.title, 24), w = label.length * 7 + 8;
-        const below = e.emotion < 0;
-        let ly = below ? cy + 24 : cy - 14;
-        let anchor = "middle", lx = cx;
-        if (cx - w / 2 < 4) { anchor = "start"; lx = cx - 6; }
-        if (cx + w / 2 > W - 4) { anchor = "end"; lx = cx + 6; }
-        const x1 = anchor === "start" ? lx : anchor === "end" ? lx - w : lx - w / 2, x2 = x1 + w;
-        for (let tries = 0; tries < 6 && placed.some((p) => p.x1 < x2 && x1 < p.x2 && Math.abs(p.y - ly) < 16); tries++) ly += below ? 16 : -16;
-        placed.push({ x1, x2, y: ly });
-        g.append(el("text", { x: lx, y: ly, "text-anchor": anchor, "font-size": 13, "font-weight": 600, fill: "var(--ink)" }, label));
-      }
+      const full = e.title.length * CH;
+      const room = { up: cy - GAP - yTop, down: yBottom - (cy + GAP) };
+      // Positive moments read upward, hard ones downward, unless that side is too short.
+      const flip = (s) => s === "up" ? "down" : "up";
+      let side = e.emotion < 0 ? "down" : "up";
+      if (room[side] < full && room[flip(side)] > room[side]) side = flip(side);
+      const span = (s) => { const len = Math.min(full, room[s]); return s === "up" ? [cy - GAP - len, cy - GAP] : [cy + GAP, cy + GAP + len]; };
+      const hits = (s) => { const [a, b] = span(s); return placed.some((p) => Math.abs(p.x - cx) < 15 && p.a < b && a < p.b); };
+      if (hits(side) && !hits(flip(side)) && room[flip(side)] > 40) side = flip(side);
+      const [a, b] = span(side);
+      placed.push({ x: cx, a, b });
+      const label = trunc(e.title, Math.max(3, Math.floor(room[side] / CH)));
+      // rotate(-90): text reads bottom-to-top; it starts at the point going up, or ends at it going down.
+      const ty = side === "up" ? cy - GAP : cy + GAP;
+      g.append(el("text", { x: cx, y: ty, transform: `rotate(-90 ${cx} ${ty})`, "text-anchor": side === "up" ? "start" : "end", "dominant-baseline": "central", "font-size": 13, "font-weight": 600, fill: "var(--ink)" }, label));
       g.addEventListener("click", () => select(e.id));
       g.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); select(e.id); } });
       svg.append(g);
-    }
+    });
     if (!list.length) {
       svg.append(el("text", { x: W / 2, y: yMid - 16, "text-anchor": "middle", "font-size": 14, fill: "var(--muted)" }, role === "admin" ? "Add your first life event" : "No events yet"));
     }
