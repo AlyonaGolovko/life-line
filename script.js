@@ -119,9 +119,12 @@
       );
       return;
     }
+    // Logged in earlier in this tab: don't flash the login form while reopening.
+    if (hasSession()) $("loginView").hidden = true;
     const res = await fetchDataFile();
     if (res.status === "ok" && validFile(res.json)) {
       file = res.json;
+      if (await restoreSession()) return;
     } else if (res.status === "missing") {
       showSetup();
     } else if (res.status === "local") {
@@ -135,6 +138,81 @@
         $("loginErr"),
         "Couldn't load data.json. Check your connection and reload.",
       );
+    }
+    $("loginView").hidden = false;
+  }
+
+  // ---------------- stay logged in across reloads ----------------
+  // After logging in, the unlocked key is kept in this tab's sessionStorage, so reloading
+  // the page doesn't ask for the password again. It's gone when the tab is closed, on
+  // "Log out", or 12 hours after logging in (some browsers bring tabs back after a restart).
+  // Other tabs and other sites can't read it, and it never leaves this browser.
+  const SESSION = "lifeline.session.v1",
+    SESSION_MS = 12 * 60 * 60 * 1000;
+  let sessionAt = 0; // when this login started
+  function hasSession() {
+    try {
+      return !!sessionStorage.getItem(SESSION);
+    } catch {
+      return false;
+    }
+  }
+  function saveSession() {
+    try {
+      sessionStorage.setItem(
+        SESSION,
+        JSON.stringify({
+          role,
+          key: b64(dataKeyRaw),
+          device: deviceKeyRaw ? b64(deviceKeyRaw) : null,
+          at: sessionAt,
+        }),
+      );
+    } catch {}
+  }
+  function clearSession() {
+    try {
+      sessionStorage.removeItem(SESSION);
+    } catch {}
+  }
+  async function restoreSession() {
+    let saved;
+    try {
+      saved = JSON.parse(sessionStorage.getItem(SESSION));
+    } catch {
+      return false;
+    }
+    if (!saved || !saved.key || !["admin", "viewer"].includes(saved.role))
+      return false;
+    if (!(Date.now() - saved.at < SESSION_MS)) {
+      clearSession();
+      return false;
+    }
+    try {
+      const raw = unb64(saved.key);
+      const key = await importDataKey(raw);
+      const plain = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: unb64(file.iv) },
+        key,
+        unb64(file.data),
+      );
+      const data = JSON.parse(td.decode(plain));
+      dataKey = key;
+      dataKeyRaw = raw;
+      role = saved.role;
+      sessionAt = saved.at;
+      events = normalize(data.events || []);
+      openApp();
+      if (role === "admin" && saved.device) {
+        deviceKeyRaw = unb64(saved.device);
+        deviceKey = await importDataKey(deviceKeyRaw);
+        await connectGitHub();
+      }
+      return true;
+    } catch {
+      // The data file was re-locked (e.g. passwords changed elsewhere): log in again.
+      clearSession();
+      return false;
     }
   }
   function showSetup() {
@@ -201,6 +279,8 @@
       role = name === "admin" ? "admin" : "viewer";
       events = normalize(data.events || []);
       $("pass").value = "";
+      sessionAt = Date.now();
+      saveSession();
       openApp();
       if (role === "admin") await initGitHub(pass);
     } catch {
@@ -230,6 +310,7 @@
     };
     role = "admin";
     events = [];
+    sessionAt = Date.now();
     setDirty(true);
     $("setAdmin").value = "";
     $("setViewer").value = "";
@@ -267,6 +348,7 @@
       return;
     }
     dirty = false;
+    clearSession();
     location.reload();
   });
 
@@ -1175,6 +1257,7 @@
     file = { ...file, users };
     if (a) {
       await setDeviceKey(a);
+      saveSession();
       if (gh) await storeToken();
     }
     $("pwAdmin").value = "";
@@ -1197,6 +1280,7 @@
     SALT_STORE = "lifeline.devsalt.v1";
   let gh = null; // { owner, repo, branch, token, sha }
   let deviceKey = null; // derived from admin password; encrypts the stored token
+  let deviceKeyRaw = null; // its raw bytes, kept for the session so a reload can reopen autosave
   let syncTimer = null,
     syncing = false,
     syncAgain = false;
@@ -1229,7 +1313,22 @@
       salt = b64(rand(16));
       lsSet(SALT_STORE, salt);
     }
-    deviceKey = await passwordKey(pass, unb64(salt), ITERATIONS);
+    // Same key as deriveKey would give, but as raw bits so the session can keep it.
+    const base = await crypto.subtle.importKey(
+      "raw",
+      te.encode(pass),
+      "PBKDF2",
+      false,
+      ["deriveBits"],
+    );
+    deviceKeyRaw = new Uint8Array(
+      await crypto.subtle.deriveBits(
+        { name: "PBKDF2", salt: unb64(salt), iterations: ITERATIONS, hash: "SHA-256" },
+        base,
+        256,
+      ),
+    );
+    deviceKey = await importDataKey(deviceKeyRaw);
   }
   async function storeToken() {
     const iv = rand(12);
@@ -1249,6 +1348,11 @@
 
   async function initGitHub(pass) {
     await setDeviceKey(pass);
+    saveSession();
+    await connectGitHub();
+  }
+  // Unlock the saved token with the device key and turn on autosave.
+  async function connectGitHub() {
     const saved = lsGet(GH_STORE);
     if (!saved) {
       updateSyncUi();

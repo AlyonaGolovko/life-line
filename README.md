@@ -14,6 +14,8 @@ Nobody can read your events from the repository. Without a password, `data.json`
 | admin  | add, edit and delete events, change passwords |
 | viewer | look only                                   |
 
+Reloading the page keeps you logged in. You're asked for the password again when you close the tab, press "Log out", or 12 hours after logging in.
+
 ## Working offline
 
 Open `index.html` from your computer (with `style.css` and `script.js` next to it). The site asks you to choose your `data.json`, then works the same way.
