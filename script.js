@@ -333,8 +333,19 @@
     document
       .querySelectorAll(".viewer-only")
       .forEach((el) => (el.hidden = role === "admin"));
+    lockForViewer();
     resetForm();
     render();
+  }
+
+  // Viewers see the same form and "+ Add" button as the admin, but greyed out,
+  // with an "Only admin can edit" hint on hover.
+  function lockForViewer() {
+    const locked = role !== "admin";
+    for (const c of $("form").elements) c.disabled = locked;
+    $("addBtn").disabled = locked;
+    $("form").classList.toggle("locked", locked);
+    $("addWrap").classList.toggle("locked", locked);
   }
 
   $("logoutBtn").addEventListener("click", () => {
@@ -998,11 +1009,14 @@
       b.addEventListener("click", () => select(e.id));
       item.append(b);
       // Several events at the same age: the admin can set their order with ↑ / ↓.
+      // Viewers see the arrows too, but greyed out.
       const prevSame = list[i - 1] && list[i - 1].age === e.age,
         nextSame = list[i + 1] && list[i + 1].age === e.age;
-      if (role === "admin" && (prevSame || nextSame)) {
+      if (prevSame || nextSame) {
+        const isAdmin = role === "admin";
         const m = document.createElement("div");
-        m.className = "move";
+        m.className = "move" + (isAdmin ? "" : " locked");
+        if (!isAdmin) m.dataset.lock = "Only admin can edit";
         for (const [dir, sym, label, ok] of [
           [-1, "▲", "Move earlier", prevSame],
           [1, "▼", "Move later", nextSame],
@@ -1013,26 +1027,20 @@
           mb.title = label;
           mb.setAttribute("aria-label", `${label}: ${e.title}`);
           mb.dataset.move = e.id + ":" + dir;
-          mb.disabled = !ok;
+          mb.disabled = !ok || !isAdmin;
           mb.addEventListener("click", () => move(e.id, dir));
           m.append(mb);
         }
         item.append(m);
       }
       box.append(item);
-      // Viewers have no edit form, so show the note right under the chosen event in the list too.
-      if (role !== "admin" && e.id === selectedId && e.note) {
-        const n = document.createElement("p");
-        n.className = "row-note";
-        n.textContent = e.note;
-        box.append(n);
-      }
     });
   }
 
   // Swap an event with its neighbour of the same age. The sort is stable, so the
   // order of the events array is the order shown in the list and on the chart.
   function move(id, dir) {
+    if (role !== "admin") return;
     const list = sorted(),
       i = list.findIndex((x) => x.id === id);
     const a = list[i],
@@ -1053,6 +1061,11 @@
   }
 
   function render() {
+    // Viewers: the locked form always mirrors the chosen event (or is empty when none is chosen).
+    if (role !== "admin") {
+      if (selectedId && events.some((x) => x.id === selectedId)) loadForm(selectedId);
+      else resetForm();
+    }
     drawChart();
     drawList();
   }
@@ -1092,14 +1105,16 @@
     $("fTitle").value = e.title;
     $("fNote").value = e.note;
     setEmo(e.emotion);
-    $("formTitle").textContent = "Edit life event";
+    const isAdmin = role === "admin";
+    $("formTitle").textContent = isAdmin ? "Edit life event" : "Life event";
     $("fSave").textContent = "Save";
-    $("fDelete").hidden = false;
-    $("fCancel").hidden = false;
+    $("fDelete").hidden = !isAdmin;
+    $("fCancel").hidden = !isAdmin;
     showErr($("formErr"), "");
     disarmDelete();
   }
   $("addBtn").addEventListener("click", () => {
+    if (role !== "admin") return;
     selectedId = null;
     resetForm();
     render();
@@ -1113,6 +1128,7 @@
 
   $("form").addEventListener("submit", (ev) => {
     ev.preventDefault();
+    if (role !== "admin") return;
     const age = parseFloat($("fAge").value),
       title = $("fTitle").value.trim();
     if (!Number.isFinite(age) || age < 0 || age > 120) {

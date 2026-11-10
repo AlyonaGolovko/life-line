@@ -94,14 +94,24 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .move button:hover:not(:disabled), .move button:focus-visible { background: var(--surface); color: var(--accent); }
 .move button:disabled { opacity: .25; cursor: default; }
 .row:hover { background: var(--surface); }
+
+/* ---------- viewer: visible but locked ---------- */
+.lock-wrap { display: inline-flex; }
+.locked { position: relative; cursor: not-allowed; }
+.locked :disabled { pointer-events: none; } /* let the hover reach the wrapper */
+.locked input:disabled, .locked textarea:disabled, .locked .btn:disabled { opacity: .55; }
+.locked[data-lock]:hover::after {
+  content: attr(data-lock); position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 3;
+  background: var(--ink); color: #fff; font-size: 12px; font-weight: 500; line-height: 1.3;
+  padding: 6px 10px; border-radius: 6px; white-space: nowrap; pointer-events: none;
+}
+#form.locked[data-lock]:hover::after { right: auto; left: 22px; }
 .row.active { background: var(--accent-soft); border-radius: 8px; }
 .row .age { font-family: var(--display); font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
 .row .t { font-weight: 600; overflow-wrap: anywhere; }
 .row .v { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
 .good { color: var(--good); } .bad { color: var(--bad); } .zero { color: var(--muted); }
 .empty { color: var(--muted); padding: 16px 8px; }
-.row-note { margin: 0; padding: 4px 8px 14px 68px; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
-@media (max-width: 700px) { .row-note { padding-left: 8px; } }
 .status { font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px; background: var(--surface); color: var(--muted); align-self: center; }
 .status.ok { background: var(--good-soft); color: var(--good); }
 .status.bad { background: var(--bad-soft); color: var(--bad); }

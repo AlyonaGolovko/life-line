@@ -98,7 +98,7 @@
     </section>
 
     <div class="grid">
-      <form class="panel admin-only" id="form" novalidate>
+      <form class="panel" id="form" novalidate data-lock="Only admin can edit">
         <h2 id="formTitle">Add life event</h2>
         <div class="two">
           <label for="fAge">Age<input id="fAge" type="number" min="0" max="120" step="0.5" inputmode="decimal"></label>
@@ -121,7 +121,7 @@
       <section>
         <div class="list-head">
           <h2>Life events</h2>
-          <button class="btn soft admin-only" type="button" id="addBtn">+ Add</button>
+          <span class="lock-wrap" id="addWrap" data-lock="Only admin can edit"><button class="btn soft" type="button" id="addBtn">+ Add</button></span>
         </div>
         <div class="rows" id="rows"></div>
       </section>
